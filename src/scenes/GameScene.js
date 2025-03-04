@@ -4,15 +4,17 @@ export default class GameScene extends Phaser.Scene {
     constructor() {
         super({ key: 'GameScene' });
         this.players = new Map();
-        this.doors = [];
+        this.otherPlayers = new Map();
+        this.mazes = new Map();
         this.currentLevel = 0;
         this.riddlePanel = null;
-        this.otherPlayers = new Map(); // Pour stocker les sprites des autres joueurs
+        this.collectedClues = [];
         this.finalRiddle = {
             question: "Énigme finale: Je suis ce que je suis, mais je ne suis pas ce que je suis. Si j'étais ce que je suis, je ne serais pas ce que je suis. Que suis-je?",
             answer: "ombre",
             solved: false
         };
+        this.initialized = false;
     }
 
     init(data) {
@@ -28,44 +30,187 @@ export default class GameScene extends Phaser.Scene {
     }
 
     preload() {
+        console.log('Début du chargement des assets');
+        
+        // Modifions les chemins pour être sûr qu'ils pointent vers les bons fichiers
         this.load.image('player', '/player.png');
         this.load.image('wall', '/wall.png');
         this.load.image('door', '/door.png');
-        this.load.image('panel', '/panel.png'); // Fond pour le panneau d'énigme
+        this.load.image('panel', '/panel.png');
+
+        // Ajoutons des gestionnaires d'événements pour le chargement
+        this.load.on('loaderror', (fileObj) => {
+            console.error('Erreur de chargement pour:', fileObj.src);
+        });
+
+        this.load.on('complete', () => {
+            console.log('Tous les assets sont chargés');
+        });
     }
 
     create() {
-        // Point de départ commun pour tous les joueurs
-        const startPosition = { x: 400, y: 500 };
-        
-        // Création du joueur avec physics
-        this.player = this.physics.add.sprite(
-            startPosition.x,
-            startPosition.y,
-            'player'
-        ).setDisplaySize(32, 32);
+        // Créer la caméra qui suit le joueur
+        this.cameras.main.setZoom(0.7);
 
-        // Création des trois portes
-        this.createDoors();
-        
-        // Affichage de l'énigme principale
-        this.mainRiddle = this.add.text(400, 50, 'Collectez tous les indices !', {
-            fontSize: '24px',
-            fill: '#fff'
+        // Créer le joueur principal
+        this.player = this.physics.add.sprite(400, 500, 'player')
+            .setDisplaySize(32, 32);
+
+        this.playerText = this.add.text(400, 480, this.playerName, {
+            fontSize: '14px',
+            fill: '#ffffff'
         }).setOrigin(0.5);
 
-        // Zone de texte pour les indices collectés
-        this.cluesText = this.add.text(400, 100, 'Indices collectés: 0/3', {
-            fontSize: '18px',
-            fill: '#ffff00'
-        }).setOrigin(0.5);
+        this.cluesText = this.add.text(10, 10, 'Indices: 0/3', {
+            fontSize: '16px',
+            fill: '#ffffff'
+        }).setScrollFactor(0);
 
-        this.createRiddlePanel();
         this.setupSocketListeners();
+        this.createRiddlePanel();
         this.cursors = this.input.keyboard.createCursorKeys();
 
-        // Ajouter ces nouveaux écouteurs d'événements socket
-        this.setupMultiplayerListeners();
+        // Informer le serveur du nouveau joueur seulement une fois
+        if (!this.initialized) {
+            this.socket.emit('playerJoined', {
+                name: this.playerName,
+                x: this.player.x,
+                y: this.player.y
+            });
+            this.initialized = true;
+        }
+
+        // Demander la liste des joueurs existants
+        this.socket.emit('getExistingPlayers');
+
+        // Forcer la création d'un labyrinthe initial
+        this.createMazes(1);
+    }
+
+    createMazes(playerCount) {
+        console.log('Création des labyrinthes pour', playerCount, 'joueurs');
+        
+        // Correction : utiliser destroy() sur chaque élément du groupe
+        if (this.mazes) {
+            this.mazes.forEach((maze) => {
+                maze.getChildren().forEach((child) => {
+                    child.destroy();
+                });
+            });
+        }
+        this.mazes = this.add.group();
+
+        const mazeWidth = 8;  // Correspond à la taille de generateMazeWithObstacles
+        const mazeHeight = 8; // Correspond à la taille de generateMazeWithObstacles
+        const cellSize = 64;  // Taille de chaque cellule
+
+        const positions = this.calculateMazePositions(playerCount);
+        console.log('Positions des labyrinthes:', positions);
+        
+        positions.forEach((pos, index) => {
+            this.createSingleMaze(pos, index, cellSize, mazeWidth, mazeHeight);
+        });
+    }
+
+    calculateMazePositions(playerCount) {
+        const positions = [];
+        const centerX = this.cameras.main.centerX;
+        const centerY = this.cameras.main.centerY;
+        
+        switch(playerCount) {
+            case 1:
+                positions.push({ x: centerX, y: centerY });
+                break;
+            case 2:
+                positions.push(
+                    { x: centerX - 300, y: centerY },
+                    { x: centerX + 300, y: centerY }
+                );
+                break;
+            case 3:
+                positions.push(
+                    { x: centerX - 300, y: centerY - 200 },
+                    { x: centerX + 300, y: centerY - 200 },
+                    { x: centerX, y: centerY + 200 }
+                );
+                break;
+            case 4:
+                positions.push(
+                    { x: centerX - 300, y: centerY - 200 },
+                    { x: centerX + 300, y: centerY - 200 },
+                    { x: centerX - 300, y: centerY + 200 },
+                    { x: centerX + 300, y: centerY + 200 }
+                );
+                break;
+        }
+        return positions;
+    }
+
+    createSingleMaze(position, index, cellSize, mazeWidth, mazeHeight) {
+        console.log(`Création du labyrinthe ${index} à la position:`, position);
+        
+        const mazeData = this.generateMazeWithObstacles();
+        
+        mazeData.forEach((row, y) => {
+            row.forEach((cell, x) => {
+                const worldX = position.x + (x - mazeWidth/2) * cellSize;
+                const worldY = position.y + (y - mazeHeight/2) * cellSize;
+
+                if (cell === 1) {  // Mur
+                    const wall = this.physics.add.sprite(worldX, worldY, 'wall')
+                        .setDisplaySize(cellSize, cellSize)
+                        .setImmovable(true);
+                    this.mazes.add(wall);
+                    
+                    // Ajouter un log pour vérifier la création des murs
+                    console.log(`Mur créé à: ${worldX}, ${worldY}`);
+                    
+                } else if (cell === 2) {  // Porte
+                    const door = this.physics.add.sprite(worldX, worldY, 'door')
+                        .setDisplaySize(cellSize, cellSize)
+                        .setImmovable(true);
+                    door.riddle = this.getRiddle(y % 3);
+                    this.mazes.add(door);
+                    
+                    // Ajouter un log pour vérifier la création des portes
+                    console.log(`Porte créée à: ${worldX}, ${worldY}`);
+                }
+            });
+        });
+    }
+
+    generateMazeWithObstacles() {
+        return [
+            [1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 2, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 0, 1, 2, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 2, 1, 1, 0, 1],
+            [1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+    }
+
+    getRiddle(level) {
+        const riddles = [
+            {
+                question: "Je suis grand quand je suis jeune et petit quand je suis vieux. Que suis-je?",
+                answer: "bougie",
+                clue: "Dans l'obscurité, je guide..."
+            },
+            {
+                question: "Plus j'ai de gardiens, moins je suis en sécurité. Qui suis-je?",
+                answer: "secret",
+                clue: "Ce qui est caché..."
+            },
+            {
+                question: "Je parle sans bouche et j'entends sans oreilles. Qui suis-je?",
+                answer: "echo",
+                clue: "Réflexion sonore..."
+            }
+        ];
+        return riddles[level];
     }
 
     createRiddlePanel() {
@@ -123,44 +268,6 @@ export default class GameScene extends Phaser.Scene {
         });
     }
 
-    createDoors() {
-        const doorPositions = [
-            { x: 200, y: 300 },
-            { x: 400, y: 300 },
-            { x: 600, y: 300 }
-        ];
-
-        const doorRiddles = [
-            { question: "Je suis grand quand je suis jeune et petit quand je suis vieux. Que suis-je?", 
-              answer: "bougie", 
-              clue: "Dans l'obscurité, je guide..." },
-            { question: "Plus j'ai de gardiens, moins je suis en sécurité. Qui suis-je?", 
-              answer: "secret", 
-              clue: "Ce qui est caché..." },
-            { question: "Je parle sans bouche et j'entends sans oreilles. Qui suis-je?", 
-              answer: "echo", 
-              clue: "Réflexion sonore..." }
-        ];
-
-        doorPositions.forEach((pos, index) => {
-            const door = this.physics.add.sprite(pos.x, pos.y, 'door')
-                .setDisplaySize(64, 96)
-                .setImmovable(true);
-
-            door.riddle = doorRiddles[index];
-            door.index = index;
-
-            // Ajouter collision entre le joueur et la porte
-            this.physics.add.collider(this.player, door, () => {
-                if (this.currentLevel === index && !door.solved) {
-                    this.showRiddlePrompt(door);
-                }
-            });
-
-            this.doors.push(door);
-        });
-    }
-
     showRiddlePrompt(door) {
         this.currentDoor = door;
         this.riddleText.setText(door.riddle.question);
@@ -204,93 +311,79 @@ export default class GameScene extends Phaser.Scene {
     }
 
     setupSocketListeners() {
-        this.socket.on('playerMoved', (playerInfo) => {
-            if (playerInfo.id !== this.playerId) {
-                // Mettre à jour la position des autres joueurs
-                const otherPlayer = this.players.get(playerInfo.id);
-                if (otherPlayer) {
-                    otherPlayer.x = playerInfo.x;
-                    otherPlayer.y = playerInfo.y;
-                }
-            }
+        this.socket.on('playerCount', (count) => {
+            console.log('Réception du nombre de joueurs:', count);
+            this.createMazes(count);
         });
 
-        this.socket.on('playerProgress', (data) => {
-            if (data.playerId !== this.playerId) {
-                // Mettre à jour visuellement la progression des autres joueurs
-                const otherPlayer = this.players.get(data.playerId);
-                if (otherPlayer) {
-                    otherPlayer.level = data.level;
-                    // Ajouter un effet visuel pour montrer la progression
-                    this.add.text(otherPlayer.x, otherPlayer.y - 20, 
-                        `Niveau ${data.level} complété!`, {
-                            fontSize: '14px',
-                            fill: '#00ff00'
-                        }).setOrigin(0.5);
-                }
-            }
-        });
-    }
-
-    setupMultiplayerListeners() {
-        // Quand un nouveau joueur rejoint
         this.socket.on('newPlayer', (playerInfo) => {
+            console.log('Nouveau joueur connecté:', playerInfo);
             if (playerInfo.id !== this.playerId) {
                 this.addOtherPlayer(playerInfo);
             }
         });
 
-        // Quand un joueur quitte
-        this.socket.on('playerDisconnected', (playerId) => {
-            if (this.otherPlayers.has(playerId)) {
-                this.otherPlayers.get(playerId).destroy();
-                this.otherPlayers.delete(playerId);
-            }
-        });
-
-        // Mise à jour de la position des autres joueurs
-        this.socket.on('playerMoved', (playerInfo) => {
-            if (playerInfo.id !== this.playerId) {
-                const otherPlayer = this.otherPlayers.get(playerInfo.id);
-                if (otherPlayer) {
-                    otherPlayer.setPosition(playerInfo.x, playerInfo.y);
-                    
-                    // Ajouter ou mettre à jour le nom du joueur
-                    if (!otherPlayer.nameText) {
-                        otherPlayer.nameText = this.add.text(0, -20, playerInfo.name, {
-                            fontSize: '14px',
-                            fill: '#ffffff'
-                        }).setOrigin(0.5);
-                    }
-                    otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y - 20);
-                }
-            }
-        });
-
-        // Demander la liste des joueurs existants
-        this.socket.emit('getExistingPlayers');
-        
-        // Recevoir la liste des joueurs existants
         this.socket.on('existingPlayers', (players) => {
+            console.log('Liste des joueurs reçue:', players);
+            // Nettoyer les joueurs existants
+            this.otherPlayers.forEach((player) => {
+                if (player.nameText) player.nameText.destroy();
+                player.destroy();
+            });
+            this.otherPlayers.clear();
+
+            // Ajouter tous les autres joueurs sauf soi-même
             players.forEach(playerInfo => {
-                if (playerInfo.id !== this.playerId) {
+                if (playerInfo.id && playerInfo.id !== this.playerId) {
                     this.addOtherPlayer(playerInfo);
                 }
             });
         });
+
+        this.socket.on('playerMoved', (playerInfo) => {
+            console.log('Mouvement reçu:', playerInfo);
+            const otherPlayer = this.otherPlayers.get(playerInfo.id);
+            if (otherPlayer) {
+                otherPlayer.setPosition(playerInfo.x, playerInfo.y);
+                otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y - 20);
+            }
+        });
+
+        this.socket.on('playerDisconnected', (playerId) => {
+            console.log('Joueur déconnecté:', playerId);
+            const otherPlayer = this.otherPlayers.get(playerId);
+            if (otherPlayer) {
+                if (otherPlayer.nameText) otherPlayer.nameText.destroy();
+                otherPlayer.destroy();
+                this.otherPlayers.delete(playerId);
+            }
+        });
     }
 
     addOtherPlayer(playerInfo) {
+        // Vérifier si le joueur existe déjà
+        if (this.otherPlayers.has(playerInfo.id)) {
+            console.log('Joueur déjà existant:', playerInfo.id);
+            return;
+        }
+
+        // Vérifier que les informations sont valides
+        if (!playerInfo.id || !playerInfo.name) {
+            console.log('Informations de joueur invalides:', playerInfo);
+            return;
+        }
+
+        console.log('Ajout d\'un autre joueur:', playerInfo);
         const otherPlayer = this.physics.add.sprite(
-            playerInfo.x || 400,
-            playerInfo.y || 500,
+            playerInfo.x,
+            playerInfo.y,
             'player'
         ).setDisplaySize(32, 32);
 
         // Ajouter le nom au-dessus du joueur
         const nameText = this.add.text(
-            playerInfo.x || 400,
-            (playerInfo.y || 500) - 20,
+            playerInfo.x,
+            playerInfo.y - 20,
             playerInfo.name,
             {
                 fontSize: '14px',
@@ -300,6 +393,13 @@ export default class GameScene extends Phaser.Scene {
 
         otherPlayer.nameText = nameText;
         this.otherPlayers.set(playerInfo.id, otherPlayer);
+        
+        console.log('Liste mise à jour des autres joueurs:', 
+            Array.from(this.otherPlayers.entries()).map(([id, player]) => ({
+                id,
+                name: player.nameText ? player.nameText.text : 'Sans nom'
+            }))
+        );
     }
 
     update() {
@@ -307,7 +407,6 @@ export default class GameScene extends Phaser.Scene {
             const speed = 4;
             let moved = false;
 
-            // Mouvement du joueur
             if (this.cursors.left.isDown) {
                 this.player.setVelocityX(-speed * 60);
                 moved = true;
@@ -329,7 +428,8 @@ export default class GameScene extends Phaser.Scene {
             }
 
             if (moved) {
-                // Émettre la position avec plus d'informations
+                this.playerText.setPosition(this.player.x, this.player.y - 20);
+                // Émettre la position avec toutes les informations nécessaires
                 this.socket.emit('playerMovement', {
                     x: this.player.x,
                     y: this.player.y,

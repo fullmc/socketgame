@@ -72,8 +72,8 @@ const startGame = () => {
 // Mise à jour de la configuration Phaser
 const gameConfig = {
     type: Phaser.AUTO,
-    width: 1200,
-    height: 800,
+    width: 1600,
+    height: 1200,
     parent: 'game-container',
     backgroundColor: '#000000',
     physics: {
