@@ -46,14 +46,30 @@ export default class GameScene extends Phaser.Scene {
         
         // Définir les limites du monde de jeu
         this.physics.world.setBounds(0, 0, 1200, 800); // Ajustez ces valeurs selon la taille de votre canvas (1200, 800)        
-        // Création du joueur avec physics
-        this.player = this.physics.add.sprite(
-            startPosition.x,
-            startPosition.y,
-            'player'
-        ).setDisplaySize(32, 32);
-        // Activer les collisions avec les bords du monde pour le joueur
-        this.player.setCollideWorldBounds(true);
+        // Création du conteneur du joueur avec une taille spécifique
+        this.playerContainer = this.add.container(startPosition.x, startPosition.y);
+        
+        // Création du sprite du joueur au centre du conteneur
+        this.player = this.physics.add.sprite(0, 0, 'player')
+            .setDisplaySize(32, 32);
+        
+        // Ajouter les pupilles statiques
+        const pupilSize = 1.8;
+        const pupilOffsetX = 4;
+        const pupilOffsetY = -2;
+        
+        const leftPupil = this.add.circle(-pupilOffsetX, pupilOffsetY, pupilSize, 0x000000);
+        const rightPupil = this.add.circle(pupilOffsetX, pupilOffsetY, pupilSize, 0x000000);
+        
+        // Ajouter le sprite et les pupilles au conteneur
+        this.playerContainer.add([this.player, leftPupil, rightPupil]);
+        
+        // Activer la physique sur le conteneur avec une hitbox spécifique
+        this.physics.world.enable(this.playerContainer);
+        this.playerContainer.body.setSize(32, 32); // Définir la taille de la hitbox
+        this.playerContainer.body.setOffset(-16, -16); // Centrer la hitbox
+        this.playerContainer.body.setCollideWorldBounds(true);
+        
         // Création des trois portes
         this.createDoors();
         
@@ -187,7 +203,7 @@ export default class GameScene extends Phaser.Scene {
             door.index = index;
 
             // Ajouter un gestionnaire de collision et de chevauchement
-            this.physics.add.collider(this.player, door, () => {
+            this.physics.add.collider(this.playerContainer, door, () => {
                 if (!door.solved) {
                     this.showRiddlePrompt(door);
                 }
@@ -218,7 +234,7 @@ export default class GameScene extends Phaser.Scene {
         this.riddleText.setText(door.riddle.question);
         this.answerInput.setText('Cliquez pour répondre');
         this.riddlePanel.setVisible(true);
-        this.player.setVelocity(0);
+        this.playerContainer.body.setVelocity(0);
         this.canMove = false;
     }
 
@@ -374,36 +390,35 @@ export default class GameScene extends Phaser.Scene {
     }
 
     update() {
-        if (this.cursors && this.player && this.canMove) {
+        if (this.cursors && this.playerContainer && this.canMove) {
             const speed = 4;
             let moved = false;
 
-            // Mouvement du joueur
+            // Mouvement du conteneur du joueur
             if (this.cursors.left.isDown) {
-                this.player.setVelocityX(-speed * 60);
+                this.playerContainer.body.setVelocityX(-speed * 60);
                 moved = true;
             } else if (this.cursors.right.isDown) {
-                this.player.setVelocityX(speed * 60);
+                this.playerContainer.body.setVelocityX(speed * 60);
                 moved = true;
             } else {
-                this.player.setVelocityX(0);
+                this.playerContainer.body.setVelocityX(0);
             }
 
             if (this.cursors.up.isDown) {
-                this.player.setVelocityY(-speed * 60);
+                this.playerContainer.body.setVelocityY(-speed * 60);
                 moved = true;
             } else if (this.cursors.down.isDown) {
-                this.player.setVelocityY(speed * 60);
+                this.playerContainer.body.setVelocityY(speed * 60);
                 moved = true;
             } else {
-                this.player.setVelocityY(0);
+                this.playerContainer.body.setVelocityY(0);
             }
 
             if (moved) {
-                // Émettre la position avec plus d'informations
                 this.socket.emit('playerMovement', {
-                    x: this.player.x,
-                    y: this.player.y,
+                    x: this.playerContainer.x,
+                    y: this.playerContainer.y,
                     id: this.playerId,
                     name: this.playerName
                 });
