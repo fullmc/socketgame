@@ -8,6 +8,8 @@ export default class GameScene extends Phaser.Scene {
         this.currentLevel = 0;
         this.riddlePanel = null;
         this.otherPlayers = new Map(); // Pour stocker les sprites des autres joueurs
+        this.playerCount = 0; // Compteur pour gérer le positionnement
+        this.PLAYER_SPACING = 40; // Espacement entre les joueurs
         this.finalRiddle = {
             question: "Énigme finale: Je suis ce que je suis, mais je ne suis pas ce que je suis. Si j'étais ce que je suis, je ne serais pas ce que je suis. Que suis-je?",
             answer: "ombre",
@@ -36,7 +38,13 @@ export default class GameScene extends Phaser.Scene {
 
     create() {
         // Point de départ commun pour tous les joueurs
-        const startPosition = { x: 400, y: 500 };
+        const startPosition = { 
+            x: 100 + (this.playerCount * this.PLAYER_SPACING), 
+            y: 800 
+        };
+        
+        // Définir les limites du monde de jeu
+        this.physics.world.setBounds(0, 0, 1200, 800); // Ajustez ces valeurs selon la taille de votre canvas (1200, 800)
         
         // Création du joueur avec physics
         this.player = this.physics.add.sprite(
@@ -44,6 +52,9 @@ export default class GameScene extends Phaser.Scene {
             startPosition.y,
             'player'
         ).setDisplaySize(32, 32);
+        
+        // Activer les collisions avec les bords du monde pour le joueur
+        this.player.setCollideWorldBounds(true);
 
         // Création des trois portes
         this.createDoors();
@@ -66,6 +77,19 @@ export default class GameScene extends Phaser.Scene {
 
         // Ajouter ces nouveaux écouteurs d'événements socket
         this.setupMultiplayerListeners();
+
+        // Remplacer les colliders existants par un overlap
+        this.physics.add.overlap(
+            this.player,
+            this.doors,
+            (player, door) => {
+                if (!door.solved) {
+                    this.showRiddlePrompt(door);
+                }
+            },
+            null,
+            this
+        );
     }
 
     createRiddlePanel() {
@@ -127,38 +151,65 @@ export default class GameScene extends Phaser.Scene {
         const doorPositions = [
             { x: 200, y: 300 },
             { x: 400, y: 300 },
-            { x: 600, y: 300 }
+            { x: 600, y: 300 },
+            { x: 200, y: 500 },
+            { x: 400, y: 500 },
+            { x: 600, y: 500 },
+            { x: 300, y: 400 },
+            { x: 500, y: 400 }
         ];
 
         const doorRiddles = [
             { question: "Je suis grand quand je suis jeune et petit quand je suis vieux. Que suis-je?", 
               answer: "bougie", 
-              clue: "Dans l'obscurité, je guide..." },
+              clue: "Dans l'obscurité, je guide...",
+              hasRiddle: true },
             { question: "Plus j'ai de gardiens, moins je suis en sécurité. Qui suis-je?", 
               answer: "secret", 
-              clue: "Ce qui est caché..." },
+              clue: "Ce qui est caché...",
+              hasRiddle: true },
             { question: "Je parle sans bouche et j'entends sans oreilles. Qui suis-je?", 
               answer: "echo", 
-              clue: "Réflexion sonore..." }
+              clue: "Réflexion sonore...",
+              hasRiddle: true },
+            { question: "Pas de devinette ici, cherchez ailleurs !",
+              hasRiddle: false },
+            { question: "Cette porte est vide, continuez votre recherche !",
+              hasRiddle: false },
+            { question: "Plus je suis chaud, plus je suis frais. Que suis-je?",
+              answer: "pain",
+              clue: "Nourriture quotidienne...",
+              hasRiddle: true },
+            { question: "Rien à voir ici, poursuivez votre quête !",
+              hasRiddle: false },
+            { question: "Je monte et descends sans bouger. Que suis-je?",
+              answer: "escalier",
+              clue: "Le chemin vertical...",
+              hasRiddle: true }
         ];
 
+        // Mélanger aléatoirement les énigmes
+        this.shuffleArray(doorRiddles);
+
         doorPositions.forEach((pos, index) => {
-            const door = this.physics.add.sprite(pos.x, pos.y, 'door')
+            const door = this.physics.add.sprite(pos.x, pos.y, 'door-closed')
                 .setDisplaySize(64, 96)
                 .setImmovable(true);
 
             door.riddle = doorRiddles[index];
             door.index = index;
-
-            // Ajouter collision entre le joueur et la porte
-            this.physics.add.collider(this.player, door, () => {
-                if (this.currentLevel === index && !door.solved) {
-                    this.showRiddlePrompt(door);
-                }
-            });
+            
 
             this.doors.push(door);
         });
+    }
+
+    // Ajouter cette nouvelle méthode pour mélanger le tableau des énigmes
+    shuffleArray(array) {
+        for (let i = array.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [array[i], array[j]] = [array[j], array[i]];
+        }
     }
 
     showRiddlePrompt(door) {
@@ -169,22 +220,26 @@ export default class GameScene extends Phaser.Scene {
     }
 
     checkAnswer(door, answer) {
+        if (!door.riddle.hasRiddle) {
+            this.riddlePanel.setVisible(false);
+            return;
+        }
+
         if (answer.toLowerCase() === door.riddle.answer) {
             door.solved = true;
-            this.currentLevel++;
             this.collectClue(door.riddle.clue);
             
             // Émettre la progression au serveur
             this.socket.emit('levelComplete', {
-                level: this.currentLevel,
+                level: this.getCompletedRiddlesCount(),
                 playerId: this.playerId,
                 clue: door.riddle.clue
             });
 
             this.riddlePanel.setVisible(false);
 
-            // Vérifier si toutes les portes sont résolues
-            if (this.currentLevel === 3) {
+            // Vérifier si toutes les énigmes sont résolues
+            if (this.allRiddlesSolved()) {
                 this.showFinalRiddle();
             }
         } else {
@@ -192,9 +247,21 @@ export default class GameScene extends Phaser.Scene {
         }
     }
 
+    // Ajouter cette nouvelle méthode pour compter les énigmes résolues
+    getCompletedRiddlesCount() {
+        return this.doors.filter(door => door.solved && door.riddle.hasRiddle).length;
+    }
+
+    // Ajouter cette nouvelle méthode pour vérifier si toutes les énigmes sont résolues
+    allRiddlesSolved() {
+        const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
+        return this.getCompletedRiddlesCount() === totalRiddles;
+    }
+
     collectClue(clue) {
-        const collectedClues = this.currentLevel;
-        this.cluesText.setText(`Indices collectés: ${collectedClues}/3\n${clue}`);
+        const collectedClues = this.getCompletedRiddlesCount();
+        const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
+        this.cluesText.setText(`Indices collectés: ${collectedClues}/${totalRiddles}\n${clue}`);
     }
 
     showFinalRiddle() {
@@ -262,7 +329,7 @@ export default class GameScene extends Phaser.Scene {
                             fill: '#ffffff'
                         }).setOrigin(0.5);
                     }
-                    otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y - 20);
+                    otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y -20);
                 }
             }
         });
@@ -281,16 +348,18 @@ export default class GameScene extends Phaser.Scene {
     }
 
     addOtherPlayer(playerInfo) {
+        this.playerCount++;
         const otherPlayer = this.physics.add.sprite(
-            playerInfo.x || 400,
-            playerInfo.y || 500,
+            100 + (this.playerCount * this.PLAYER_SPACING),
+            800,
             'player'
-        ).setDisplaySize(32, 32);
+        ).setDisplaySize(32, 32)
+        .setCollideWorldBounds(true);
 
-        // Ajouter le nom au-dessus du joueur
+        // Ajouter le nom au-dessus du joueur avec un décalage vertical plus important
         const nameText = this.add.text(
-            playerInfo.x || 400,
-            (playerInfo.y || 500) - 20,
+            100 + (this.playerCount * this.PLAYER_SPACING),
+            800 - 40,  // Augmenté le décalage vertical de -20 à -40
             playerInfo.name,
             {
                 fontSize: '14px',
@@ -336,6 +405,19 @@ export default class GameScene extends Phaser.Scene {
                     id: this.playerId,
                     name: this.playerName
                 });
+            }
+
+            // Vérifier si le joueur touche encore une porte
+            let touchingAnyDoor = false;
+            this.doors.forEach(door => {
+                if (this.physics.overlap(this.player, door)) {
+                    touchingAnyDoor = true;
+                }
+            });
+
+            // Cacher le panneau si le joueur ne touche plus aucune porte
+            if (!touchingAnyDoor && this.riddlePanel.visible) {
+                this.riddlePanel.setVisible(false);
             }
         }
     }
