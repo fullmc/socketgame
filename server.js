@@ -34,6 +34,11 @@ const riddles = [
     // Ajoutez d'autres énigmes ici
 ];
 
+// Ajouter un tableau de couleurs et un index
+const playerColors = [0xff0000, 0x0000ff, 0xff00ff, 0x006400];
+// rouge, bleu, rose, vert foncé
+let currentColorIndex = 0;
+
 io.on('connection', (socket) => {
   console.log('Un joueur est connecté:', socket.id);
   
@@ -41,27 +46,40 @@ io.on('connection', (socket) => {
   socket.emit('playerJoined', Array.from(players.values()));
 
   socket.on('playerJoined', (playerInfo) => {
+    // Attribuer une couleur au joueur
+    const playerColor = playerColors[currentColorIndex];
+    currentColorIndex = (currentColorIndex + 1) % playerColors.length;
+
     players.set(socket.id, {
         id: socket.id,
         name: playerInfo.name,
         x: 400,
-        y: 500
+        y: 500,
+        color: playerColor
     });
 
-    // Informer les autres joueurs du nouveau joueur
+    // Informer le joueur de sa couleur
+    socket.emit('playerColor', {
+        playerId: socket.id,
+        color: playerColor
+    });
+
+    // Informer les autres joueurs du nouveau joueur avec sa couleur
     socket.broadcast.emit('newPlayer', {
         id: socket.id,
         name: playerInfo.name,
         x: 400,
-        y: 500
+        y: 500,
+        color: playerColor
     });
-});
+  });
 
-socket.on('getExistingPlayers', () => {
+  socket.on('getExistingPlayers', () => {
+    // Envoyer les informations des joueurs existants avec leurs couleurs
     socket.emit('existingPlayers', Array.from(players.values()));
-});
+  });
 
-socket.on('playerMovement', (movementData) => {
+  socket.on('playerMovement', (movementData) => {
     const player = players.get(socket.id);
     if (player) {
         player.x = movementData.x;
@@ -75,7 +93,7 @@ socket.on('playerMovement', (movementData) => {
             name: player.name
         });
     }
-});
+  });
   
   // Gérer le nom du joueur
   socket.on('setPlayerName', (name) => {
@@ -166,6 +184,11 @@ socket.on('playerMovement', (movementData) => {
 
   socket.on('disconnect', () => {
     console.log('Un joueur s\'est déconnecté:', socket.id);
+    // Libérer la couleur pour réutilisation (optionnel)
+    const player = players.get(socket.id);
+    if (player && player.color) {
+        currentColorIndex = playerColors.indexOf(player.color);
+    }
     players.delete(socket.id);
     io.emit('playerDisconnected', socket.id);
   });

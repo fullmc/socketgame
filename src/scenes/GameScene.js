@@ -16,6 +16,7 @@ export default class GameScene extends Phaser.Scene {
             solved: false
         };
         this.canMove = true;
+        // this.playerColors = [0xff0000, 0x0000ff, 0xff00ff, 0x006400];
     }
 
     init(data) {
@@ -23,10 +24,16 @@ export default class GameScene extends Phaser.Scene {
         this.playerId = data.playerId;
         this.playerName = data.playerName;
         
-        // Ajouter le joueur actuel à la Map des joueurs
+        // Ne pas définir de couleur ici, attendre la réponse du serveur
         this.players.set(this.playerId, {
             name: this.playerName,
             position: { x: 0, y: 0 }
+        });
+
+        // Envoyer uniquement l'ID et le nom
+        this.socket.emit('playerJoined', {
+            id: this.playerId,
+            name: this.playerName
         });
     }
 
@@ -35,9 +42,14 @@ export default class GameScene extends Phaser.Scene {
         this.load.image('wall', '/wall.png');
         this.load.image('door', '/door.png');
         this.load.image('panel', '/panel.png'); // Fond pour le panneau d'énigme
+        this.load.image('brickWall', '/brickWall.png'); // Ajoutez cette ligne
     }
 
     create() {
+        this.background = this.add.tileSprite(0, 0, 1200, 800, 'brickWall')
+            .setOrigin(0, 0)
+            .setDepth(-1); // Pour s'assurer que le background est derrière tous les autres éléments
+
         // Point de départ commun pour tous les joueurs
         const startPosition = { 
             x: 100 + (this.playerCount * this.PLAYER_SPACING), 
@@ -70,6 +82,21 @@ export default class GameScene extends Phaser.Scene {
         this.playerContainer.body.setOffset(-16, -16); // Centrer la hitbox
         this.playerContainer.body.setCollideWorldBounds(true);
         
+        // Création du joueur avec physics
+        this.player = this.physics.add.sprite(
+            startPosition.x,
+            startPosition.y,
+            'player'
+        ).setDisplaySize(32, 32);
+        // Activer les collisions avec les bords du monde pour le joueur
+        this.player.setCollideWorldBounds(true);
+        // Colorer le joueur principal
+        this.socket.on('playerColor', (data) => {
+            if (data.playerId === this.playerId) {
+                this.player.setTint(data.color);
+                this.players.get(this.playerId).color = data.color;
+            }
+        });
         // Création des trois portes
         this.createDoors();
         
@@ -372,8 +399,10 @@ export default class GameScene extends Phaser.Scene {
             800,
             'player'
         ).setDisplaySize(32, 32)
-        .setCollideWorldBounds(true);
-
+        .setCollideWorldBounds(true)
+        // Utiliser la couleur reçue du joueur
+        .setTint(playerInfo.color);
+        
         // Ajouter le nom au-dessus du joueur
         const nameText = this.add.text(
             100 + (this.playerCount * this.PLAYER_SPACING),
