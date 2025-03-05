@@ -82,14 +82,6 @@ export default class GameScene extends Phaser.Scene {
         this.playerContainer.body.setOffset(-16, -16); // Centrer la hitbox
         this.playerContainer.body.setCollideWorldBounds(true);
         
-        // Création du joueur avec physics
-        this.player = this.physics.add.sprite(
-            startPosition.x,
-            startPosition.y,
-            'player'
-        ).setDisplaySize(32, 32);
-        // Activer les collisions avec les bords du monde pour le joueur
-        this.player.setCollideWorldBounds(true);
         // Colorer le joueur principal
         this.socket.on('playerColor', (data) => {
             if (data.playerId === this.playerId) {
@@ -119,6 +111,36 @@ export default class GameScene extends Phaser.Scene {
         // Ajouter ces nouveaux écouteurs d'événements socket
         this.setupMultiplayerListeners();
         this.canMove = true;
+
+        // Ajouter un conteneur pour les indices
+        this.cluesContainer = this.add.container(10, 10);
+        this.cluesText = this.add.text(0, 0, 'Indices collectés: 0', {
+            fontSize: '18px',
+            color: '#ffffff'
+        }).setDepth(90);
+        this.cluesList = this.add.text(0, 30, '', {
+            fontSize: '16px',
+            color: '#ffffff',
+            wordWrap: { width: 200 }
+        }).setDepth(90);
+        
+        this.cluesContainer.add([this.cluesText, this.cluesList]);
+        this.collectedClues = [];
+
+        // Ajouter l'écouteur d'événement pour la mise à jour des indices
+        this.socket.on('playerClueUpdate', (data) => {
+            if (data.playerId === this.socket.id) {
+                this.collectedClues = data.allClues || [];
+                this.updateCluesDisplay();
+            }
+            
+            if (data.playerId !== this.socket.id) {
+                const player = this.otherPlayers.get(data.playerId);
+                if (player && player.playerName) {
+                    this.showTemporaryMessage(`${player.playerName} a trouvé un indice !`);
+                }
+            }
+        });
     }
 
     createRiddlePanel() {
@@ -259,13 +281,44 @@ export default class GameScene extends Phaser.Scene {
     showRiddlePrompt(door) {
         this.currentDoor = door;
         this.riddleText.setText(door.riddle.question);
-        this.answerInput.setText('Cliquez pour répondre');
+        
+        // Gérer différemment l'affichage selon si la porte a une énigme ou non
+        if (!door.riddle.hasRiddle) {
+            // Cacher les éléments interactifs
+            this.answerInput.setVisible(false);
+            this.riddlePanel.getAt(3).setVisible(false); // Cache le bouton Valider
+            
+            // Ajouter un message pour fermer
+            this.riddleText.setText(door.riddle.question + '\n\n(Cliquez sur X pour fermer)');
+        } else {
+            // Afficher normalement les éléments pour une porte avec énigme
+            this.answerInput.setVisible(true).setText('Cliquez pour répondre');
+            this.riddlePanel.getAt(3).setVisible(true); // Affiche le bouton Valider
+        }
+        
         this.riddlePanel.setVisible(true);
         this.playerContainer.body.setVelocity(0);
         this.canMove = false;
     }
 
     checkAnswer(door, answer) {
+        // Vérifier d'abord si c'est l'énigme finale
+        if (this.finalRiddle && !this.finalRiddle.solved && this.allRiddlesSolved()) {
+            if (answer.toLowerCase() === this.finalRiddle.answer) {
+                this.finalRiddle.solved = true;
+                this.riddlePanel.setVisible(false);
+                this.canMove = true;
+                // Émettre l'événement de victoire
+                this.socket.emit('gameComplete', {
+                    playerId: this.playerId
+                });
+                // Afficher un message de victoire
+                this.showTemporaryMessage('Félicitations ! Vous avez résolu toutes les énigmes !');
+                return;
+            }
+        }
+
+        // Sinon, continuer avec la vérification des énigmes des portes
         if (!door.riddle.hasRiddle) {
             this.riddlePanel.setVisible(false);
             return;
@@ -274,6 +327,7 @@ export default class GameScene extends Phaser.Scene {
         if (answer.toLowerCase() === door.riddle.answer) {
             door.solved = true;
             this.collectClue(door.riddle.clue);
+            this.canMove = true;
             
             // Émettre la progression au serveur
             this.socket.emit('levelComplete', {
@@ -304,9 +358,37 @@ export default class GameScene extends Phaser.Scene {
         }
 
     collectClue(clue) {
-        const collectedClues = this.currentLevel;
-        const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
-        this.cluesText.setText(`Indices collectés: ${collectedClues}\n${clue}`);
+        // Vérifier si l'indice n'est pas déjà dans la liste
+        if (!this.collectedClues) {
+            this.collectedClues = [];
+        }
+        
+        if (!this.collectedClues.includes(clue)) {
+            // Ajouter le nouvel indice à la liste
+            this.collectedClues.push(clue);
+            this.updateCluesDisplay();
+            
+            // Émettre l'événement au serveur avec la liste complète des indices
+            this.socket.emit('clueCollected', {
+                playerId: this.socket.id,
+                clue: clue,
+                allClues: this.collectedClues
+            });
+        }
+    }
+
+    updateCluesDisplay() {
+        // Mettre à jour le compteur
+        this.cluesText.setText(`Indices collectés: ${this.collectedClues.length}`);
+        
+        // Construire la liste complète des indices
+        let cluesListText = '';
+        this.collectedClues.forEach((clue, index) => {
+            cluesListText += `${index + 1}. ${clue}\n`;
+        });
+        
+        // Mettre à jour le texte de la liste
+        this.cluesList.setText(cluesListText);
     }
 
     showFinalRiddle() {
@@ -453,5 +535,55 @@ export default class GameScene extends Phaser.Scene {
                 });
             }
         }
+    }
+
+    showRiddleWindow() {
+        this.canMove = false;
+        
+        // Créer la fenêtre d'énigme
+        this.riddleWindow = this.add.rectangle(400, 300, 400, 300, 0xffffff)
+            .setOrigin(0.5)
+            .setDepth(99);
+
+        // Ajouter la croix pour fermer
+        const closeButton = this.add.text(580, 160, 'X', {
+            fontSize: '24px',
+            color: '#000000'
+        })
+        .setInteractive()
+        .setDepth(100);
+
+        // Gestionnaire pour le clic sur la croix uniquement
+        closeButton.on('pointerdown', () => {
+            this.closeRiddleWindow();
+        });
+
+        // ... reste du code de la fenêtre ...
+    }
+
+    closeRiddleWindow() {
+        this.canMove = true;
+        if (this.riddleWindow) this.riddleWindow.destroy();
+        // Supprimer tous les éléments de la fenêtre (textes, boutons, etc.)
+        this.children.list
+            .filter(child => child.depth >= 99)
+            .forEach(child => child.destroy());
+    }
+
+    // Ajouter cette méthode pour afficher des messages temporaires
+    showTemporaryMessage(message) {
+        const text = this.add.text(600, 100, message, {
+            fontSize: '20px',
+            color: '#ffffff',
+            backgroundColor: '#000000',
+            padding: { x: 10, y: 5 }
+        })
+        .setOrigin(0.5)
+        .setDepth(100);
+
+        // Faire disparaître le message après 2 secondes
+        this.time.delayedCall(2000, () => {
+            text.destroy();
+        });
     }
 } 

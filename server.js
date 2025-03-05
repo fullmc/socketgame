@@ -173,6 +173,20 @@ io.on('connection', (socket) => {
       }
   });
 
+  socket.on('clueCollected', (data) => {
+    const player = players.get(data.playerId);
+    if (player) {
+        player.clues = data.allClues || [];
+        
+        // Informer tous les joueurs de la progression avec la liste complète
+        io.emit('playerClueUpdate', {
+            playerId: data.playerId,
+            cluesCount: player.clues.length,
+            allClues: player.clues
+        });
+    }
+  });
+
   function checkGameProgress() {
     const allPlayersComplete = Array.from(players.values())
         .every(player => player.level === 3);
