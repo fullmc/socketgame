@@ -15,6 +15,7 @@ export default class GameScene extends Phaser.Scene {
             answer: "ombre",
             solved: false
         };
+        this.canMove = true;
     }
 
     init(data) {
@@ -44,18 +45,15 @@ export default class GameScene extends Phaser.Scene {
         };
         
         // Définir les limites du monde de jeu
-        this.physics.world.setBounds(0, 0, 1200, 800); // Ajustez ces valeurs selon la taille de votre canvas (1200, 800)
-        
+        this.physics.world.setBounds(0, 0, 1200, 800); // Ajustez ces valeurs selon la taille de votre canvas (1200, 800)        
         // Création du joueur avec physics
         this.player = this.physics.add.sprite(
             startPosition.x,
             startPosition.y,
             'player'
         ).setDisplaySize(32, 32);
-        
         // Activer les collisions avec les bords du monde pour le joueur
         this.player.setCollideWorldBounds(true);
-
         // Création des trois portes
         this.createDoors();
         
@@ -77,19 +75,7 @@ export default class GameScene extends Phaser.Scene {
 
         // Ajouter ces nouveaux écouteurs d'événements socket
         this.setupMultiplayerListeners();
-
-        // Remplacer les colliders existants par un overlap
-        this.physics.add.overlap(
-            this.player,
-            this.doors,
-            (player, door) => {
-                if (!door.solved) {
-                    this.showRiddlePrompt(door);
-                }
-            },
-            null,
-            this
-        );
+        this.canMove = true;
     }
 
     createRiddlePanel() {
@@ -144,19 +130,20 @@ export default class GameScene extends Phaser.Scene {
 
         closeButton.on('pointerdown', () => {
             this.riddlePanel.setVisible(false);
+            this.canMove = true;
         });
     }
 
     createDoors() {
         const doorPositions = [
-            { x: 200, y: 300 },
-            { x: 400, y: 300 },
-            { x: 600, y: 300 },
-            { x: 200, y: 500 },
-            { x: 400, y: 500 },
-            { x: 600, y: 500 },
-            { x: 300, y: 400 },
-            { x: 500, y: 400 }
+            { x: 200, y: 200 },
+            { x: 600, y: 200 },
+            { x: 1000, y: 200 },
+            { x: 200, y: 400 },
+            { x: 600, y: 400 },
+            { x: 1000, y: 400 },
+            { x: 400, y: 600 },
+            { x: 800, y: 600 }        
         ];
 
         const doorRiddles = [
@@ -192,20 +179,34 @@ export default class GameScene extends Phaser.Scene {
         this.shuffleArray(doorRiddles);
 
         doorPositions.forEach((pos, index) => {
-            const door = this.physics.add.sprite(pos.x, pos.y, 'door-closed')
+            const door = this.physics.add.sprite(pos.x, pos.y, 'door')
                 .setDisplaySize(64, 96)
                 .setImmovable(true);
 
             door.riddle = doorRiddles[index];
             door.index = index;
-            
+
+            // Ajouter un gestionnaire de collision et de chevauchement
+            this.physics.add.collider(this.player, door, () => {
+                if (!door.solved) {
+                    this.showRiddlePrompt(door);
+                }
+            }, null, this);
+
+            // Ajouter un événement quand le joueur n'est plus en collision
+            door.on('overlapend', () => {
+                if (this.riddlePanel && this.currentDoor === door) {
+                    this.riddlePanel.setVisible(false);
+                    this.canMove = true;
+                }
+            });
 
             this.doors.push(door);
         });
     }
-
-    // Ajouter cette nouvelle méthode pour mélanger le tableau des énigmes
-    shuffleArray(array) {
+    
+       // Ajouter cette nouvelle méthode pour mélanger le tableau des énigmes
+       shuffleArray(array) {
         for (let i = array.length - 1; i > 0; i--) {
             const j = Math.floor(Math.random() * (i + 1));
             [array[i], array[j]] = [array[j], array[i]];
@@ -217,6 +218,8 @@ export default class GameScene extends Phaser.Scene {
         this.riddleText.setText(door.riddle.question);
         this.answerInput.setText('Cliquez pour répondre');
         this.riddlePanel.setVisible(true);
+        this.player.setVelocity(0);
+        this.canMove = false;
     }
 
     checkAnswer(door, answer) {
@@ -238,7 +241,7 @@ export default class GameScene extends Phaser.Scene {
 
             this.riddlePanel.setVisible(false);
 
-            // Vérifier si toutes les énigmes sont résolues
+            // Vérifier si toutes les portes sont résolues
             if (this.allRiddlesSolved()) {
                 this.showFinalRiddle();
             }
@@ -246,22 +249,21 @@ export default class GameScene extends Phaser.Scene {
             this.answerInput.setText('Mauvaise réponse, essayez encore');
         }
     }
-
-    // Ajouter cette nouvelle méthode pour compter les énigmes résolues
-    getCompletedRiddlesCount() {
-        return this.doors.filter(door => door.solved && door.riddle.hasRiddle).length;
-    }
-
-    // Ajouter cette nouvelle méthode pour vérifier si toutes les énigmes sont résolues
-    allRiddlesSolved() {
-        const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
-        return this.getCompletedRiddlesCount() === totalRiddles;
-    }
+        // Ajouter cette nouvelle méthode pour compter les énigmes résolues
+        getCompletedRiddlesCount() {
+            return this.doors.filter(door => door.solved && door.riddle.hasRiddle).length;
+        }
+    
+        // Ajouter cette nouvelle méthode pour vérifier si toutes les énigmes sont résolues
+        allRiddlesSolved() {
+            const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
+            return this.getCompletedRiddlesCount() === totalRiddles;
+        }
 
     collectClue(clue) {
-        const collectedClues = this.getCompletedRiddlesCount();
+        const collectedClues = this.currentLevel;
         const totalRiddles = this.doors.filter(door => door.riddle.hasRiddle).length;
-        this.cluesText.setText(`Indices collectés: ${collectedClues}/${totalRiddles}\n${clue}`);
+        this.cluesText.setText(`Indices collectés: ${collectedClues}\n${clue}`);
     }
 
     showFinalRiddle() {
@@ -329,7 +331,7 @@ export default class GameScene extends Phaser.Scene {
                             fill: '#ffffff'
                         }).setOrigin(0.5);
                     }
-                    otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y -20);
+                    otherPlayer.nameText.setPosition(playerInfo.x, playerInfo.y - 20);
                 }
             }
         });
@@ -356,10 +358,10 @@ export default class GameScene extends Phaser.Scene {
         ).setDisplaySize(32, 32)
         .setCollideWorldBounds(true);
 
-        // Ajouter le nom au-dessus du joueur avec un décalage vertical plus important
+        // Ajouter le nom au-dessus du joueur
         const nameText = this.add.text(
             100 + (this.playerCount * this.PLAYER_SPACING),
-            800 - 40,  // Augmenté le décalage vertical de -20 à -40
+            800 - 40, 
             playerInfo.name,
             {
                 fontSize: '14px',
@@ -372,7 +374,7 @@ export default class GameScene extends Phaser.Scene {
     }
 
     update() {
-        if (this.cursors && this.player) {
+        if (this.cursors && this.player && this.canMove) {
             const speed = 4;
             let moved = false;
 
@@ -405,19 +407,6 @@ export default class GameScene extends Phaser.Scene {
                     id: this.playerId,
                     name: this.playerName
                 });
-            }
-
-            // Vérifier si le joueur touche encore une porte
-            let touchingAnyDoor = false;
-            this.doors.forEach(door => {
-                if (this.physics.overlap(this.player, door)) {
-                    touchingAnyDoor = true;
-                }
-            });
-
-            // Cacher le panneau si le joueur ne touche plus aucune porte
-            if (!touchingAnyDoor && this.riddlePanel.visible) {
-                this.riddlePanel.setVisible(false);
             }
         }
     }
