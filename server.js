@@ -187,6 +187,11 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('restartGame', () => {
+    resetGame();
+    io.emit('gameRestarted');
+  });
+
   function checkGameProgress() {
     const allPlayersComplete = Array.from(players.values())
         .every(player => player.level === 3);
@@ -207,6 +212,15 @@ io.on('connection', (socket) => {
     io.emit('playerDisconnected', socket.id);
   });
 });
+
+// Dans server.js, ajoutez une fonction pour réinitialiser le jeu
+function resetGame() {
+    // Vider complètement la Map des joueurs
+    players.clear();
+    gameState.riddlesProgress.clear();
+    gameState.finalRiddleSolved = false;
+    currentColorIndex = 0;
+}
 
 const PORT = 8080;
 http.listen(PORT, () => {

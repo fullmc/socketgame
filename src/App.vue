@@ -51,6 +51,19 @@ socket.on('roomFull', () => {
   alert('La salle est pleine ! Maximum 4 joueurs.')
 })
 
+// Ajouter un gestionnaire pour le redémarrage
+socket.on('gameRestarted', () => {
+    gameState.value.gameStarted = false;
+    gameState.value.clues = [];
+    showNameInput.value = true;  // Réafficher le formulaire de nom
+    
+    // Réinitialiser le jeu Phaser
+    if (game.value) {
+        game.value.destroy(true);
+        game.value = null;
+    }
+});
+
 // Fonction pour soumettre le nom du joueur
 const submitPlayerName = () => {
   if (playerName.value.trim()) {
@@ -72,8 +85,8 @@ const startGame = () => {
 // Mise à jour de la configuration Phaser
 const gameConfig = {
     type: Phaser.AUTO,
-    width: 1200,
-    height: 800,
+    width: 800,
+    height: 600,
     parent: 'game-container',
     backgroundColor: '#000000',
     physics: {
@@ -176,5 +189,8 @@ button:hover {
 
 #game-container {
   border: 1px solid #ccc;
+  max-width: 800px;
+  max-height: 600px;
+  margin: 0 auto;
 }
 </style>

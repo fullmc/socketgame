@@ -50,14 +50,15 @@ export default class GameScene extends Phaser.Scene {
             .setOrigin(0, 0)
             .setDepth(-1); // Pour s'assurer que le background est derrière tous les autres éléments
 
-        // Point de départ commun pour tous les joueurs
+        // Ajuster la taille du monde de jeu
+        this.physics.world.setBounds(0, 0, 800, 600);  // Mettre à jour les limites du monde
+
+        // Ajuster la position de départ des joueurs
         const startPosition = { 
             x: 100 + (this.playerCount * this.PLAYER_SPACING), 
-            y: 800 
+            y: 550  // Position plus haute pour être visible dans l'écran plus petit
         };
         
-        // Définir les limites du monde de jeu
-        this.physics.world.setBounds(0, 0, 1200, 800); // Ajustez ces valeurs selon la taille de votre canvas (1200, 800)        
         // Création du conteneur du joueur avec une taille spécifique
         this.playerContainer = this.add.container(startPosition.x, startPosition.y);
         
@@ -98,11 +99,7 @@ export default class GameScene extends Phaser.Scene {
             fill: '#fff'
         }).setOrigin(0.5);
 
-        // Zone de texte pour les indices collectés
-        this.cluesText = this.add.text(400, 100, 'Indices collectés: 0/3', {
-            fontSize: '18px',
-            fill: '#ffff00'
-        }).setOrigin(0.5);
+    
 
         this.createRiddlePanel();
         this.setupSocketListeners();
@@ -141,42 +138,122 @@ export default class GameScene extends Phaser.Scene {
                 }
             }
         });
+
+        // Ajuster la profondeur des joueurs
+        this.playerContainer.setDepth(1);  // Les joueurs auront une profondeur de 1
+
+        // Ajouter l'écouteur pour la fin du jeu
+        this.socket.on('gameComplete', (data) => {
+            const winner = this.players.get(data.winner);
+            const winnerName = winner ? winner.name : 'Un joueur';
+            
+            // Créer un panneau de victoire
+            const victoryPanel = this.add.container(400, 300)
+                .setDepth(2000);
+
+            const background = this.add.rectangle(0, 0, 600, 300, 0x333333, 0.95);
+            
+            const victoryText = this.add.text(0, -80, 
+                `${winnerName} a résolu l'énigme finale !`, 
+                { 
+                    fontSize: '24px',
+                    fill: '#ffffff',
+                    align: 'center'
+                }
+            ).setOrigin(0.5);
+
+            const restartText = this.add.text(0, 50, 'Retour à l\'accueil', {
+                fontSize: '20px',
+                fill: '#ffffff',
+                backgroundColor: '#4CAF50',
+                padding: { x: 30, y: 15 }
+            })
+            .setOrigin(0.5)
+            .setInteractive();
+
+            restartText.on('pointerdown', () => {
+                this.socket.emit('restartGame');
+                window.location.reload();
+            });
+
+            victoryPanel.add([background, victoryText, restartText]);
+        });
+
+        // Ajouter l'écouteur pour le redémarrage
+        this.socket.on('gameRestarted', () => {
+            // Réinitialiser l'état du jeu
+            this.collectedClues = [];
+            this.updateCluesDisplay();
+            
+            // Réinitialiser les portes
+            this.doors.forEach(door => {
+                door.solved = false;
+            });
+            
+            // Cacher tous les panneaux
+            if (this.riddlePanel) this.riddlePanel.setVisible(false);
+            
+            // Replacer le joueur à sa position initiale
+            this.playerContainer.setPosition(100, 550);
+            
+            // Réactiver les mouvements
+            this.canMove = true;
+            
+            // Réinitialiser l'état du jeu
+            this.finalRiddle.solved = false;
+            
+            // Nettoyer tous les autres joueurs
+            this.otherPlayers.forEach(player => {
+                if (player.nameText) player.nameText.destroy();
+                player.destroy();
+            });
+            this.otherPlayers.clear();
+            this.players.clear();
+            this.playerCount = 0;
+            
+            // Détruire le panneau de victoire s'il existe
+            this.children.list
+                .filter(child => child.type === 'Container' && child.y === 300)
+                .forEach(container => container.destroy());
+        });
     }
 
     createRiddlePanel() {
         // Créer un panneau d'énigme caché par défaut
-        this.riddlePanel = this.add.container(400, 300).setVisible(false);
+        this.riddlePanel = this.add.container(400, 300)
+            .setVisible(false)
+            .setDepth(1000);
 
-        // Fond du panneau
-        const background = this.add.rectangle(0, 0, 400, 300, 0x000000, 0.8);
+        // Agrandir le fond du panneau
+        const background = this.add.rectangle(0, 0, 600, 400, 0x000000, 0.8);
         
-        // Texte de l'énigme
-        this.riddleText = this.add.text(0, -100, '', {
-            fontSize: '20px',
+        // Ajuster la position du texte de l'énigme
+        this.riddleText = this.add.text(0, -150, '', {
+            fontSize: '16px',
             fill: '#ffffff',
             align: 'center',
-            wordWrap: { width: 350 }
+            wordWrap: { width: 550 }
         }).setOrigin(0.5);
 
-        // Champ de réponse
+        // Ajuster la position du champ de réponse
         this.answerInput = this.add.text(0, 0, 'Cliquez pour répondre', {
-            fontSize: '16px',
+            fontSize: '20px',
             fill: '#ffffff',
             backgroundColor: '#333333',
             padding: { x: 10, y: 5 }
         }).setOrigin(0.5).setInteractive();
 
-        // Bouton de validation
-        const submitButton = this.add.text(0, 50, 'Valider', {
-            fontSize: '16px',
+        // Ajuster la position du bouton de validation
+        const submitButton = this.add.text(0, 100, 'Valider', {
+            fontSize: '20px',
             fill: '#ffffff',
             backgroundColor: '#4CAF50',
             padding: { x: 20, y: 10 }
         }).setOrigin(0.5).setInteractive();
 
-        // Bouton de fermeture
-        const closeButton = this.add.text(180, -130, 'X', {
-            fontSize: '20px',
+        // Ajuster la position du bouton de fermeture
+        const closeButton = this.add.text(280, -180, 'X', {
+            fontSize: '24px',
             fill: '#ffffff'
         }).setOrigin(0.5).setInteractive();
 
@@ -201,14 +278,14 @@ export default class GameScene extends Phaser.Scene {
 
     createDoors() {
         const doorPositions = [
-            { x: 200, y: 200 },
-            { x: 600, y: 200 },
-            { x: 1000, y: 200 },
-            { x: 200, y: 400 },
-            { x: 600, y: 400 },
-            { x: 1000, y: 400 },
-            { x: 400, y: 600 },
-            { x: 800, y: 600 }        
+            { x: 150, y: 150 },    // Ajuster les positions des portes
+            { x: 400, y: 150 },    // pour qu'elles soient visibles
+            { x: 650, y: 150 },    // dans l'écran plus petit
+            { x: 150, y: 300 },
+            { x: 400, y: 300 },
+            { x: 650, y: 300 },
+            { x: 275, y: 450 },
+            { x: 525, y: 450 }        
         ];
 
         const doorRiddles = [
@@ -308,9 +385,10 @@ export default class GameScene extends Phaser.Scene {
                 this.finalRiddle.solved = true;
                 this.riddlePanel.setVisible(false);
                 this.canMove = true;
-                // Émettre l'événement de victoire
-                this.socket.emit('gameComplete', {
-                    playerId: this.playerId
+                // Émettre l'événement de victoire avec finalRiddleAttempt au lieu de gameComplete
+                this.socket.emit('finalRiddleAttempt', {
+                    playerId: this.playerId,
+                    answer: answer
                 });
                 // Afficher un message de victoire
                 this.showTemporaryMessage('Félicitations ! Vous avez résolu toutes les énigmes !');
@@ -478,23 +556,26 @@ export default class GameScene extends Phaser.Scene {
         this.playerCount++;
         const otherPlayer = this.physics.add.sprite(
             100 + (this.playerCount * this.PLAYER_SPACING),
-            800,
+            550,
             'player'
-        ).setDisplaySize(32, 32)
+        )
+        .setDisplaySize(32, 32)
         .setCollideWorldBounds(true)
-        // Utiliser la couleur reçue du joueur
+        .setDepth(1)  // Même profondeur que le joueur principal
         .setTint(playerInfo.color);
         
         // Ajouter le nom au-dessus du joueur
         const nameText = this.add.text(
             100 + (this.playerCount * this.PLAYER_SPACING),
-            800 - 40, 
+            550 - 40, 
             playerInfo.name,
             {
                 fontSize: '14px',
                 fill: '#ffffff'
             }
-        ).setOrigin(0.5);
+        )
+        .setOrigin(0.5)
+        .setDepth(1);  // Même profondeur que les joueurs
 
         otherPlayer.nameText = nameText;
         this.otherPlayers.set(playerInfo.id, otherPlayer);
