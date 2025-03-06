@@ -33,3 +33,11 @@ npm run build
 ```sh
 npm run lint
 ```
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fullmc/socketgame.git"
+  },
+    "bugs": {
+    "url": "https://github.com/fullmc/socketgame/issues"
+  },
+  "homepage": "https://github.com/fullmc/socketgame#readme"

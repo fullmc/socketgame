@@ -16,8 +16,9 @@ const gameState = ref({
 const showNameInput = ref(true)
 const playerName = ref('')
 
-const socket = io('http://localhost:8080', {
-  reconnection: true
+const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:8080', {
+  reconnection: true,
+  transports: ['websocket', 'polling']
 })
 
 const game = ref(null)
