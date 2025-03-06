@@ -289,31 +289,38 @@ export default class GameScene extends Phaser.Scene {
         ];
 
         const doorRiddles = [
-            { question: "Je suis grand quand je suis jeune et petit quand je suis vieux. Que suis-je?", 
-              answer: "bougie", 
-              clue: "Dans l'obscurité, je guide...",
+            { question: "10+5x3=?", 
+              answer: "25", 
+              clue: "Je vis dans la lumière",
               hasRiddle: true },
-            { question: "Plus j'ai de gardiens, moins je suis en sécurité. Qui suis-je?", 
-              answer: "secret", 
-              clue: "Ce qui est caché...",
+
+            { question: "Quelle est la prochaine lettre de la série ? : D, S, V, J, M, ?, L", 
+              answer: "M", 
+              clue: "Je te suis partout sans jamais te quitter",
               hasRiddle: true },
-            { question: "Je parle sans bouche et j'entends sans oreilles. Qui suis-je?", 
-              answer: "echo", 
-              clue: "Réflexion sonore...",
+
+            { question: "Si j'ai 3 pommes et que j'en prends 2, combien j'en ai ?", 
+              answer: "2", 
+              clue: "Tapis dans...",
               hasRiddle: true },
+
             { question: "Pas de devinette ici, cherchez ailleurs !",
               hasRiddle: false },
+
             { question: "Cette porte est vide, continuez votre recherche !",
               hasRiddle: false },
-            { question: "Plus je suis chaud, plus je suis frais. Que suis-je?",
-              answer: "pain",
-              clue: "Nourriture quotidienne...",
+
+            { question: "Qu'est-ce qui est jaune et qui attend ?",
+              answer: "jonathan",
+              clue: "Sans moi, le soleil ne prouverait rien.",
               hasRiddle: true },
+
             { question: "Rien à voir ici, poursuivez votre quête !",
               hasRiddle: false },
-            { question: "Je monte et descends sans bouger. Que suis-je?",
-              answer: "escalier",
-              clue: "Le chemin vertical...",
+
+            { question: "Combien y a t-il de lettres dans l'alphabet ?",
+              answer: "26",
+              clue: "Je change de forme mais jamais de nature.",
               hasRiddle: true }
         ];
 
