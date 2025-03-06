@@ -38,11 +38,11 @@ export default class GameScene extends Phaser.Scene {
     }
 
     preload() {
-        this.load.image('player', 'public/player.png');
-        this.load.image('wall', 'public/wall.png');
-        this.load.image('door', 'public/door.png');
-        this.load.image('panel', 'public/panel.png');
-        this.load.image('brickWall', 'public/brickWall.png');
+        this.load.image('player', '/player.png');
+        this.load.image('wall', '/wall.png');
+        this.load.image('door', '/door.png');
+        this.load.image('panel', '/panel.png');
+        this.load.image('brickWall', '/brickWall.png');
     }
 
     create() {
