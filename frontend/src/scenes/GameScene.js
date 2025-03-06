@@ -295,7 +295,7 @@ export default class GameScene extends Phaser.Scene {
               hasRiddle: true },
 
             { question: "Quel est le deuxieme jour de la semaine ?", 
-              answer: "Mardi", 
+              answer: "mardi", 
               clue: "Je te suis partout sans jamais te quitter",
               hasRiddle: true },
 
