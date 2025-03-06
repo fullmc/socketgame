@@ -403,13 +403,18 @@ export default class GameScene extends Phaser.Scene {
             }
         }
 
-        // Sinon, continuer avec la vérification des énigmes des portes
+        // Pour les énigmes normales
         if (!door.riddle.hasRiddle) {
             this.riddlePanel.setVisible(false);
             return;
         }
 
-        if (answer.toLowerCase() === door.riddle.answer) {
+        // Normaliser la réponse (enlever les accents et mettre en minuscules)
+        const normalizedAnswer = answer.toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '');
+        
+        if (normalizedAnswer === door.riddle.answer) {
             door.solved = true;
             this.collectClue(door.riddle.clue);
             this.canMove = true;
