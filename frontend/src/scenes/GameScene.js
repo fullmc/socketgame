@@ -294,8 +294,8 @@ export default class GameScene extends Phaser.Scene {
               clue: "Je vis dans la lumière",
               hasRiddle: true },
 
-            { question: "Quelle est la prochaine lettre de la série ? : D, S, V, J, M, ?, L", 
-              answer: "M", 
+            { question: "Quel est le deuxieme jour de la semaine ?", 
+              answer: "Mardi", 
               clue: "Je te suis partout sans jamais te quitter",
               hasRiddle: true },
 
